@@ -14,6 +14,10 @@ spring:
     timeout: 2s
     connect-timeout: 2s
 
+springfox:
+  documentation:
+    enabled: false
+
 mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
