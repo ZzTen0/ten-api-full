@@ -1,0 +1,115 @@
+server:
+  port: 8090
+spring:
+  application:
+    name: ten-api-gateway
+  main:
+    web-application-type: reactive
+  # Redis 配置（nonce防重放 + 网关令牌桶）
+  redis:
+    host: localhost
+    port: 6379
+    password: ${SPRING_REDIS_PASSWORD:}
+    database: 1
+    timeout: 2s
+    connect-timeout: 2s
+  cloud:
+    gateway:
+      httpclient:
+        connect-timeout: 2000
+        response-timeout: 3s
+      # 全局CORS配置
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            allowCredentials: true
+            exposedHeaders: "*"
+            maxAge: 3600
+      discovery:
+        locator:
+          enabled: false
+      routes:
+        # ========== 管理后台接口 → ten-api-backend ==========
+        - id: backend_user_route
+          uri: http://localhost:7529
+          predicates:
+            - Path=/api/user/**
+          filters:
+            - StripPrefix=0
+        - id: backend_interface_route
+          uri: http://localhost:7529
+          predicates:
+            - Path=/api/interfaceInfo/**
+          filters:
+            - StripPrefix=0
+        - id: backend_userInterfaceInfo_route
+          uri: http://localhost:7529
+          predicates:
+            - Path=/api/userInterfaceInfo/**
+          filters:
+            - StripPrefix=0
+        - id: backend_post_route
+          uri: http://localhost:7529
+          predicates:
+            - Path=/api/post/**
+          filters:
+            - StripPrefix=0
+        # ========== 对外开放API接口 → ten-api-interface ==========
+        - id: api_interface_route
+          uri: http://localhost:8123
+          predicates:
+            - Path=/api/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@apiKeyResolver}"
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
+            - name: CircuitBreaker
+              args:
+                name: apiInterfaceCircuitBreaker
+                fallbackUri: forward:/fallback/api
+            - StripPrefix=0
+
+# Dubbo 消费者配置
+dubbo:
+  application:
+    name: ten-api-gateway-consumer
+    logger: slf4j
+  registry:
+    address: zookeeper://localhost:2181
+    timeout: 10000
+  consumer:
+    timeout: 2000
+    retries: 0
+    check: false   # 启动时不检查提供者是否存在，便于各服务独立启动
+  scan:
+    base-packages: com.ten.tenapigateway
+
+# 网关自定义配置
+gateway:
+  invoke:
+    # 不需要鉴权的路径
+    white-list:
+      - /api/user/login
+      - /api/user/register
+      - /api/user/logout
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      apiInterfaceCircuitBreaker:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 5
+  timelimiter:
+    instances:
+      apiInterfaceCircuitBreaker:
+        timeout-duration: 3s

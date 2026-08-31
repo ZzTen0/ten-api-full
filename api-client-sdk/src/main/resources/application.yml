@@ -1,0 +1,6 @@
+spring:
+  redis:
+    port: 6379
+    host: localhost
+    database: 0
+    password: ${SPRING_REDIS_PASSWORD:}

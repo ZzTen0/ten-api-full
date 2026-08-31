@@ -1,0 +1,251 @@
+# TEN API single-host deployment for a 4-core / 8-GB server.
+#
+# Before the first deployment:
+#   1. Copy .env.example to .env and replace every password.
+#   2. Build the Java artifacts as described below.
+#   3. Run: docker compose up -d --build
+#
+# Java build order:
+#   cd ten-api-common && mvn clean install -DskipTests
+#   cd ../api-client-sdk && mvn clean install -DskipTests
+#   cd ../ten-api-backend && mvn clean package -DskipTests
+#   cd ../ten-api-gateway && mvn clean package -DskipTests
+#   cd ../ten-api-interface && mvn clean package -DskipTests
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  mysql:
+    image: mysql:8.0.27
+    container_name: ten-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ten_api}
+      MYSQL_USER: ${MYSQL_USER:-ten_api}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max-connections=150
+      - --innodb-buffer-pool-size=512M
+    volumes:
+      - ten-mysql-data:/var/lib/mysql
+      - ./ten-api-backend/sql/ddl.sql:/docker-entrypoint-initdb.d/01-ddl.sql:ro
+      - ./ten-api-backend/sql/db.sql:/docker-entrypoint-initdb.d/02-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    cpus: 1.5
+    mem_limit: 1536m
+    mem_reservation: 768m
+    logging: *default-logging
+    networks:
+      - ten-api-net
+
+  redis:
+    image: redis:6.2-alpine
+    container_name: ten-redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      TZ: Asia/Shanghai
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}" --maxmemory 256mb --maxmemory-policy noeviction
+    volumes:
+      - ten-redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping 2>/dev/null | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    cpus: 0.5
+    mem_limit: 384m
+    mem_reservation: 128m
+    logging: *default-logging
+    networks:
+      - ten-api-net
+
+  zookeeper:
+    image: bitnami/zookeeper:3.7
+    container_name: ten-zookeeper
+    restart: unless-stopped
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+      ZOO_ENABLE_AUTH: "no"
+      ZOO_HEAP_SIZE: "256"
+      TZ: Asia/Shanghai
+    volumes:
+      - ten-zk-data:/bitnami/zookeeper
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/bitnami/zookeeper/bin/zkServer.sh status"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    cpus: 0.5
+    mem_limit: 512m
+    mem_reservation: 256m
+    logging: *default-logging
+    networks:
+      - ten-api-net
+
+  ten-api-backend:
+    build:
+      context: ./ten-api-backend
+      dockerfile: Dockerfile
+    image: ten-api-backend:latest
+    container_name: ten-api-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      zookeeper:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-ten_api}?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useAffectedRows=true"
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-ten_api}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: "6379"
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      SPRING_REDIS_DATABASE: "0"
+      DUBBO_REGISTRY_ADDRESS: zookeeper://zookeeper:2181
+      DUBBO_PROTOCOL_PORT: "20880"
+      JAVA_OPTS: "${BACKEND_JAVA_OPTS:--Xms256m -Xmx512m -XX:MaxMetaspaceSize=192m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError}"
+    expose:
+      - "7529"
+      - "20880"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:7529/api/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    cpus: 1.5
+    mem_limit: 1024m
+    mem_reservation: 512m
+    logging: *default-logging
+    networks:
+      - ten-api-net
+
+  ten-api-interface:
+    build:
+      context: ./ten-api-interface
+      dockerfile: Dockerfile
+    image: ten-api-interface:latest
+    container_name: ten-api-interface
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-ten_api}?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true"
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-ten_api}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: "6379"
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      SPRING_REDIS_DATABASE: "0"
+      JAVA_OPTS: "${INTERFACE_JAVA_OPTS:--Xms192m -Xmx384m -XX:MaxMetaspaceSize=192m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError}"
+    expose:
+      - "8123"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8123/api/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+    cpus: 1.0
+    mem_limit: 768m
+    mem_reservation: 384m
+    logging: *default-logging
+    networks:
+      - ten-api-net
+
+  ten-api-gateway:
+    build:
+      context: ./ten-api-gateway
+      dockerfile: Dockerfile
+    image: ten-api-gateway:latest
+    container_name: ten-api-gateway
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      zookeeper:
+        condition: service_healthy
+      ten-api-backend:
+        condition: service_healthy
+      ten-api-interface:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: "6379"
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      SPRING_REDIS_DATABASE: "1"
+      DUBBO_REGISTRY_ADDRESS: zookeeper://zookeeper:2181
+      JAVA_OPTS: "${GATEWAY_JAVA_OPTS:--Xms192m -Xmx384m -XX:MaxMetaspaceSize=192m -XX:MaxDirectMemorySize=128m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError}"
+    expose:
+      - "8090"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8090/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+    cpus: 1.5
+    mem_limit: 768m
+    mem_reservation: 384m
+    logging: *default-logging
+    networks:
+      - ten-api-net
+
+  ten-api-frontend:
+    build:
+      context: ./ten-api-frontend
+      dockerfile: Dockerfile
+    image: ten-api-frontend:latest
+    container_name: ten-api-frontend
+    restart: unless-stopped
+    depends_on:
+      ten-api-gateway:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    cpus: 0.25
+    mem_limit: 128m
+    mem_reservation: 32m
+    logging: *default-logging
+    networks:
+      - ten-api-net
+
+volumes:
+  ten-mysql-data:
+  ten-redis-data:
+  ten-zk-data:
+
+networks:
+  ten-api-net:
+    driver: bridge

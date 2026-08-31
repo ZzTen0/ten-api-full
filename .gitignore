@@ -1,0 +1,35 @@
+# Secrets and local overrides
+.env
+.env.*
+!.env.example
+*密码*
+*.jks
+*.key
+*.p12
+*.pem
+
+# Build outputs and runtime files
+**/target/
+**/node_modules/
+**/dist/
+*.log
+hs_err_pid*.log
+
+# IDE and OS files
+**/.idea/
+**/.vscode/
+*.iml
+*.code-workspace
+.DS_Store
+Thumbs.db
+报错.md
+
+# Projects outside the TEN API monorepo
+frontend-preview/
+cyber-fortune-telling/
+sky-take-out/
+sql-father-backend-public-master/
+ten-ai-agent/
+
+# Reversible backup of the previous standalone backend repository metadata
+.git-backup-ten-api-backend/

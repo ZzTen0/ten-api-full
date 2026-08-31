@@ -1,0 +1,67 @@
+spring:
+  redis:
+    host: ${SPRING_REDIS_HOST}
+    port: ${SPRING_REDIS_PORT:6379}
+    password: ${SPRING_REDIS_PASSWORD}
+    database: ${SPRING_REDIS_DATABASE:1}
+  cloud:
+    gateway:
+      routes:
+        - id: backend_user_route
+          uri: http://ten-api-backend:7529
+          predicates:
+            - Path=/api/user/**
+          filters:
+            - StripPrefix=0
+        - id: backend_interface_route
+          uri: http://ten-api-backend:7529
+          predicates:
+            - Path=/api/interfaceInfo/**
+          filters:
+            - StripPrefix=0
+        - id: backend_userInterfaceInfo_route
+          uri: http://ten-api-backend:7529
+          predicates:
+            - Path=/api/userInterfaceInfo/**
+          filters:
+            - StripPrefix=0
+        - id: backend_post_route
+          uri: http://ten-api-backend:7529
+          predicates:
+            - Path=/api/post/**
+          filters:
+            - StripPrefix=0
+        - id: api_interface_route
+          uri: http://ten-api-interface:8123
+          predicates:
+            - Path=/api/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@apiKeyResolver}"
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
+            - name: CircuitBreaker
+              args:
+                name: apiInterfaceCircuitBreaker
+                fallbackUri: forward:/fallback/api
+            - StripPrefix=0
+
+dubbo:
+  registry:
+    address: ${DUBBO_REGISTRY_ADDRESS:zookeeper://zookeeper:2181}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: info
+    com.ten.tenapigateway.filter.RequestLogFilter: warn
