@@ -21,7 +21,7 @@ export function userLogin(data) {
 // 获取当前登录用户
 export function getCurrentUser() {
   return request({
-    url: '/user/current',
+    url: '/user/get/login',
     method: 'get',
   })
 }

@@ -178,6 +178,22 @@ public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, I
         return list(queryWrapper);
     }
 
+    @Override
+    public List<InterfaceInfo> listOnlineInterfaceInfo() {
+        return lambdaQuery()
+                .eq(InterfaceInfo::getStatus, InterfaceInfoStatusEnum.ONLINE.getValue())
+                .orderByAsc(InterfaceInfo::getId)
+                .list();
+    }
+
+    @Override
+    public InterfaceInfo getOnlineInterfaceInfoById(long id) {
+        return lambdaQuery()
+                .eq(InterfaceInfo::getId, id)
+                .eq(InterfaceInfo::getStatus, InterfaceInfoStatusEnum.ONLINE.getValue())
+                .one();
+    }
+
     /**
      * 获取分页接口列表
      * @param interfaceinfoQueryRequest
@@ -217,7 +233,7 @@ public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, I
      */
     @Override
     public Boolean onlineInterfaceInfo(IdRequest idRequest, HttpServletRequest request) {
-        return statusSwitch(idRequest, request);
+        return statusSwitch(idRequest, InterfaceInfoStatusEnum.ONLINE.getValue());
     }
 
     /**
@@ -228,41 +244,26 @@ public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, I
      */
     @Override
     public Boolean offlineInterfaceInfo(IdRequest idRequest, HttpServletRequest request) {
-        return statusSwitch(idRequest, request);
+        return statusSwitch(idRequest, InterfaceInfoStatusEnum.OFFLINE.getValue());
     }
 
-    @AuthCheck(mustRole = "admin")
-    private Boolean statusSwitch(IdRequest idRequest, HttpServletRequest request){
+    private Boolean statusSwitch(IdRequest idRequest, int targetStatus) {
         if (idRequest == null || idRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         long id = idRequest.getId();
-        int status = -1;
         // 判断是否存在
         InterfaceInfo oldInterfaceInfo = getById(id);
         if (oldInterfaceInfo == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
-//        测试接口是否可用
-//        com.ten.apiclientsdk.model.User user = new com.ten.apiclientsdk.model.User();
-//        user.setUsername("test");
-//        String username = apiClient.getNameByPOSTJson(user);
-//        if (StringUtils.isBlank(username)){
-//            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "接口调用失败");
-//        }
-        if(oldInterfaceInfo.getStatus() == InterfaceInfoStatusEnum.OFFLINE.getValue()){
-            status = InterfaceInfoStatusEnum.ONLINE.getValue();
-        }
-        if (oldInterfaceInfo.getStatus() == InterfaceInfoStatusEnum.ONLINE.getValue()){
-            status = InterfaceInfoStatusEnum.OFFLINE.getValue();
-        }
-        if(status == -1){
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "接口状态错误");
+        if (oldInterfaceInfo.getStatus() == targetStatus) {
+            return true;
         }
 
         InterfaceInfo interfaceInfo = new InterfaceInfo();
         interfaceInfo.setId(id);
-        interfaceInfo.setStatus(status);
+        interfaceInfo.setStatus(targetStatus);
         return updateById(interfaceInfo);
     }
 
@@ -273,7 +274,6 @@ public class InterfaceInfoServiceImpl extends ServiceImpl<InterfaceInfoMapper, I
      * @return
      */
     @Override
-    @AuthCheck(mustRole = "admin")
     public Object invokeInterfaceInfo(InterfaceInfoInvokeRequest interfaceInfoInvokeRequest, HttpServletRequest request) {
         if (interfaceInfoInvokeRequest == null || interfaceInfoInvokeRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);

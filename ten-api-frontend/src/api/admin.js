@@ -13,6 +13,6 @@ export function deleteUser(id) {
   return request({
     url: '/user/delete',
     method: 'post',
-    params: { id },
+    data: { id },
   })
 }

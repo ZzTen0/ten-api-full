@@ -72,7 +72,6 @@ import { reactive, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
-import { userLogin } from '@/api/user'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
@@ -107,13 +106,10 @@ const handleLogin = async () => {
   }
   loading.value = true
   try {
-    const res = await userLogin({
+    await userStore.login({
       userAccount: form.userAccount,
       userPassword: form.userPassword,
     })
-    const token = res.data
-    userStore.token = token
-    localStorage.setItem('token', token)
     ElMessage.success('登录成功')
     router.push(route.query.redirect || '/dashboard')
   } catch (e) {

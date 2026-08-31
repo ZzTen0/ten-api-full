@@ -43,11 +43,6 @@ public class UserVO implements Serializable {
     private String userRole;
 
     /**
-     * 用户accessKey
-     */
-    private String accessKey;
-
-    /**
      * 创建时间
      */
     private Date createTime;

@@ -53,19 +53,21 @@ const router = createRouter({
 
 // 全局前置守卫
 router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('token')
+  let userInfo = null
+  try {
+    userInfo = JSON.parse(localStorage.getItem('userInfo') || 'null')
+  } catch (e) {
+    localStorage.removeItem('userInfo')
+  }
   // 需要登录但未登录
-  if (to.meta.requiresAuth && !token) {
+  if (to.meta.requiresAuth && !userInfo?.id) {
     next({ path: '/login', query: { redirect: to.fullPath } })
     return
   }
   // 需要 admin 权限
-  if (to.meta.requiresAdmin) {
-    const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
-    if (userInfo.userRole !== 'admin') {
-      next({ path: '/' })
-      return
-    }
+  if (to.meta.requiresAdmin && userInfo?.userRole !== 'admin') {
+    next({ path: '/' })
+    return
   }
   next()
 })

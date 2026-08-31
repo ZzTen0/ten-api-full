@@ -65,6 +65,7 @@
             </div>
           </div>
         </template>
+        <el-empty v-else-if="!loading" description="接口不存在或已下线" />
       </div>
     </div>
   </div>
@@ -74,7 +75,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getInterfaceById, invokeInterface } from '@/api/interface'
+import { getOnlineInterfaceById, invokeInterface } from '@/api/interface'
 import MethodTag from '@/components/MethodTag.vue'
 
 const route = useRoute()
@@ -84,19 +85,6 @@ const invoking = ref(false)
 const detail = ref(null)
 const activeTab = ref('params')
 const invokeResult = ref(null)
-
-// 接口获取失败时使用的兜底数据
-const fallbackDetail = {
-  id: 1,
-  name: '获取名字',
-  description: '根据参数返回名字',
-  method: 'GET',
-  url: '/api/name/get',
-  status: 1,
-  requestParams: JSON.stringify([
-    { name: 'name', type: 'string', required: true, description: '需要查询的名字' },
-  ]),
-}
 
 const goBack = () => router.push('/market')
 
@@ -161,10 +149,10 @@ const loadDetail = async () => {
   loading.value = true
   try {
     const id = route.params.id
-    const res = await getInterfaceById(id)
-    detail.value = res.data || fallbackDetail
+    const res = await getOnlineInterfaceById(id)
+    detail.value = res.data || null
   } catch (e) {
-    detail.value = fallbackDetail
+    detail.value = null
   } finally {
     loading.value = false
   }

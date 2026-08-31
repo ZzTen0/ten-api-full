@@ -33,11 +33,6 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="AK" min-width="200">
-          <template #default="{ row }">
-            <span class="ak-text">{{ maskAk(row.accessKey) }}</span>
-          </template>
-        </el-table-column>
         <el-table-column label="创建时间" min-width="180">
           <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
         </el-table-column>
@@ -87,13 +82,6 @@ const pagedData = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value
   return filteredList.value.slice(start, start + pageSize.value)
 })
-
-// AK 脱敏：仅显示前 8 位 + ****
-const maskAk = (ak) => {
-  if (!ak) return '-'
-  const head = ak.length > 8 ? ak.slice(0, 8) : ak
-  return `${head}****`
-}
 
 const formatTime = (t) => {
   if (!t) return '-'
@@ -173,12 +161,6 @@ onMounted(loadData)
 
 .search-input {
   max-width: 320px;
-}
-
-.ak-text {
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-  font-size: 13px;
-  color: #1f2937;
 }
 
 .pagination {

@@ -1,32 +1,47 @@
 import { defineStore } from 'pinia'
 import { userLogin, getCurrentUser, userLogout } from '@/api/user'
 
+const readStoredUser = () => {
+  localStorage.removeItem('token')
+  try {
+    return JSON.parse(localStorage.getItem('userInfo') || 'null')
+  } catch (e) {
+    localStorage.removeItem('userInfo')
+    return null
+  }
+}
+
 export const useUserStore = defineStore('user', {
   state: () => ({
-    userInfo: JSON.parse(localStorage.getItem('userInfo') || 'null'),
-    token: localStorage.getItem('token') || '',
+    userInfo: readStoredUser(),
   }),
 
   getters: {
-    isLoggedIn: (state) => !!state.token,
+    isLoggedIn: (state) => !!state.userInfo?.id,
     userRole: (state) => state.userInfo?.userRole || '',
   },
 
   actions: {
+    setUserInfo(userInfo) {
+      this.userInfo = userInfo || null
+      if (this.userInfo) {
+        localStorage.setItem('userInfo', JSON.stringify(this.userInfo))
+      } else {
+        localStorage.removeItem('userInfo')
+      }
+    },
+
     // 登录
     async login(loginData) {
       const res = await userLogin(loginData)
-      const token = res.data
-      this.token = token
-      localStorage.setItem('token', token)
+      this.setUserInfo(res.data)
       return res
     },
 
     // 获取当前用户信息
     async fetchUserInfo() {
       const res = await getCurrentUser()
-      this.userInfo = res.data
-      localStorage.setItem('userInfo', JSON.stringify(res.data))
+      this.setUserInfo(res.data)
       return res
     },
 
@@ -37,10 +52,7 @@ export const useUserStore = defineStore('user', {
       } catch (e) {
         // 退出接口失败也清除本地状态
       } finally {
-        this.token = ''
-        this.userInfo = null
-        localStorage.removeItem('token')
-        localStorage.removeItem('userInfo')
+        this.setUserInfo(null)
       }
     },
   },

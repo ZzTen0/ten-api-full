@@ -21,28 +21,18 @@
       <div ref="chartRef" class="chart"></div>
     </div>
 
-    <!-- 4. AK/SK 密钥管理 -->
+    <!-- 4. 访问凭证 -->
     <div class="panel">
-      <div class="panel-title">密钥管理</div>
+      <div class="panel-title">访问凭证</div>
       <div v-if="hasKeys" class="key-list">
         <div class="key-row">
           <div class="key-label">AccessKey</div>
           <div class="key-value">{{ maskedAk }}</div>
           <el-button text class="key-btn" :icon="DocumentCopy" @click="copy(accessKey)">复制</el-button>
         </div>
-        <div class="key-row">
-          <div class="key-label">SecretKey</div>
-          <div class="key-value">{{ skVisible ? secretKey : '********' }}</div>
-          <el-button text class="key-btn" @click="skVisible = !skVisible">
-            <el-icon><View v-if="!skVisible" /><Hide v-else /></el-icon>
-            {{ skVisible ? '隐藏' : '显示' }}
-          </el-button>
-          <el-button text class="key-btn" :icon="DocumentCopy" @click="copy(secretKey)">复制</el-button>
-        </div>
       </div>
       <div v-else class="key-empty">
-        <span>尚未生成密钥</span>
-        <el-button type="primary" :icon="Plus" @click="handleGenerateKey">生成密钥</el-button>
+        <span>尚未生成访问凭证</span>
       </div>
     </div>
 
@@ -79,9 +69,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
-import { DocumentCopy, View, Hide, Plus } from '@element-plus/icons-vue'
+import { DocumentCopy } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { getCurrentUser } from '@/api/user'
 
 const userStore = useUserStore()
 
@@ -89,15 +78,12 @@ const userStore = useUserStore()
 const userInfo = computed(() => userStore.userInfo || {})
 const userName = computed(() => userInfo.value.userName || userInfo.value.userAccount || '用户')
 const accessKey = computed(() => userInfo.value.accessKey || '')
-const secretKey = computed(() => userInfo.value.secretKey || '')
 const hasKeys = computed(() => !!accessKey.value)
 const maskedAk = computed(() => {
   const ak = accessKey.value
   if (!ak) return ''
   return ak.length >= 8 ? ak.slice(0, 8) + '****' : ak + '****'
 })
-const skVisible = ref(false)
-
 // ===== 统计数据 =====
 const stats = [
   { label: '总调用次数', value: 26181, trend: 12.5 },
@@ -120,7 +106,7 @@ const methodTagType = (method) => {
   return map[method] || 'info'
 }
 
-// ===== 复制 / 生成密钥 =====
+// ===== 复制访问凭证 =====
 const copy = async (text) => {
   if (!text) {
     ElMessage.warning('无内容可复制')
@@ -132,10 +118,6 @@ const copy = async (text) => {
   } catch {
     ElMessage.error('复制失败')
   }
-}
-
-const handleGenerateKey = () => {
-  ElMessage.info('密钥生成功能开发中')
 }
 
 // ===== ECharts 调用趋势图 =====
@@ -188,12 +170,9 @@ const handleResize = () => {
 onMounted(async () => {
   // 拉取最新用户信息并同步到 store
   try {
-    const res = await getCurrentUser()
-    if (res?.data) {
-      userStore.userInfo = res.data
-    }
+    await userStore.fetchUserInfo()
   } catch (e) {
-    // 接口失败时沿用本地缓存的用户信息
+    // 未登录由请求拦截器统一处理
   }
   initChart()
   window.addEventListener('resize', handleResize)

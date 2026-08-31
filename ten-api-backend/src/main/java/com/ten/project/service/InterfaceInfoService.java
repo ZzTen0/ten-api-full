@@ -54,6 +54,21 @@ public interface InterfaceInfoService extends IService<InterfaceInfo> {
     List<InterfaceInfo> listInterfaceInfo(InterfaceInfoQueryRequest interfaceinfoQueryRequest);
 
     /**
+     * 获取所有已上线接口，供接口市场使用
+     *
+     * @return 已上线接口列表
+     */
+    List<InterfaceInfo> listOnlineInterfaceInfo();
+
+    /**
+     * 获取已上线接口详情，供接口市场使用
+     *
+     * @param id 接口 id
+     * @return 已上线接口，不存在或未上线时返回 null
+     */
+    InterfaceInfo getOnlineInterfaceInfoById(long id);
+
+    /**
      * 获取分页接口列表
      * @param interfaceinfoQueryRequest
      * @return

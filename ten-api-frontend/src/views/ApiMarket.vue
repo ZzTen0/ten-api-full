@@ -46,7 +46,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { listInterface } from '@/api/interface'
+import { listOnlineInterfaces } from '@/api/interface'
 import MethodTag from '@/components/MethodTag.vue'
 
 const router = useRouter()
@@ -67,15 +67,6 @@ const categoryKeywords = {
   tool: ['tool', '工具'],
 }
 
-// API 调用失败时使用的模拟数据
-const mockData = [
-  { id: 1, name: '获取名字', description: '根据参数返回名字', method: 'GET', url: '/api/name/get', status: 1 },
-  { id: 2, name: 'POST获取名字', description: 'POST方式获取名字', method: 'POST', url: '/api/name/post', status: 1 },
-  { id: 3, name: '获取当前用户', description: '获取当前登录用户信息', method: 'GET', url: '/api/user/current', status: 1 },
-  { id: 4, name: '用户注册', description: '用户注册', method: 'POST', url: '/api/user/register', status: 1 },
-  { id: 5, name: '接口下线', description: '接口下线(管理员)', method: 'PUT', url: '/api/interfaceInfo/offline', status: 0 },
-]
-
 const isOnline = (item) => Number(item.status) === 1
 
 const filteredList = computed(() => {
@@ -94,11 +85,11 @@ const goDetail = (item) => {
 const loadData = async () => {
   loading.value = true
   try {
-    const res = await listInterface()
+    const res = await listOnlineInterfaces()
     const list = res.data || []
-    interfaceList.value = Array.isArray(list) && list.length ? list : mockData
+    interfaceList.value = Array.isArray(list) ? list : []
   } catch (e) {
-    interfaceList.value = mockData
+    interfaceList.value = []
   } finally {
     loading.value = false
   }

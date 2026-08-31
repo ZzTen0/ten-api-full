@@ -4,30 +4,17 @@ import { ElMessage } from 'element-plus'
 const service = axios.create({
   baseURL: '/api',
   timeout: 10000,
+  withCredentials: true,
 })
-
-// 请求拦截器：自动携带 token
-service.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token')
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`
-    }
-    return config
-  },
-  (error) => {
-    return Promise.reject(error)
-  }
-)
 
 // 响应拦截器：统一处理业务码与 HTTP 错误
 service.interceptors.response.use(
   (response) => {
     const res = response.data
-    // 业务码不为 200 视为错误
-    if (res.code !== 200) {
+    // 后端统一响应中 code=0 表示成功
+    if (res.code !== 0) {
       ElMessage.error(res.message || '请求错误')
-      if (res.code === 401) {
+      if (res.code === 40100) {
         handleUnauthorized()
       }
       return Promise.reject(new Error(res.message || '请求错误'))
@@ -52,20 +39,23 @@ service.interceptors.response.use(
   }
 )
 
-// 401 统一处理：清除本地凭据并跳转登录页
+// 未登录统一处理：清除本地会话缓存并跳转登录页
 async function handleUnauthorized() {
-  localStorage.removeItem('token')
   localStorage.removeItem('userInfo')
   try {
     const { useUserStore } = await import('@/stores/user')
     const userStore = useUserStore()
-    userStore.token = ''
     userStore.userInfo = null
   } catch (e) {
     // store 尚未初始化时忽略
   }
   const { default: router } = await import('@/router')
-  router.push('/login')
+  if (router.currentRoute.value.path !== '/login') {
+    router.push({
+      path: '/login',
+      query: { redirect: router.currentRoute.value.fullPath },
+    })
+  }
 }
 
 export default service
