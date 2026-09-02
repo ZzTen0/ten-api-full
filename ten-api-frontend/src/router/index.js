@@ -5,6 +5,7 @@ import AdminLayout from '@/layouts/AdminLayout.vue'
 import Home from '@/views/Home.vue'
 import ApiMarket from '@/views/ApiMarket.vue'
 import ApiDetail from '@/views/ApiDetail.vue'
+import Docs from '@/views/Docs.vue'
 import Login from '@/views/Login.vue'
 import Register from '@/views/Register.vue'
 import Dashboard from '@/views/Dashboard.vue'
@@ -17,8 +18,19 @@ const routes = [
     component: DefaultLayout,
     children: [
       { path: '', name: 'Home', component: Home },
-      { path: 'market', name: 'ApiMarket', component: ApiMarket },
-      { path: 'market/:id', name: 'ApiDetail', component: ApiDetail },
+      {
+        path: 'market',
+        name: 'ApiMarket',
+        component: ApiMarket,
+        meta: { requiresAuth: true },
+      },
+      {
+        path: 'market/:id',
+        name: 'ApiDetail',
+        component: ApiDetail,
+        meta: { requiresAuth: true },
+      },
+      { path: 'docs/:section?', name: 'Docs', component: Docs },
     ],
   },
   // 登录、注册无需布局
