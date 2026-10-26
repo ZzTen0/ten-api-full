@@ -1,0 +1,28 @@
+# Secrets and local overrides
+.env
+.env.*
+!.env.example
+*密码*
+*.jks
+*.key
+*.p12
+*.pem
+
+# Build outputs and runtime files
+**/target/
+**/node_modules/
+**/dist/
+*.log
+hs_err_pid*.log
+
+# IDE and OS files
+**/.idea/
+**/.vscode/
+*.iml
+*.code-workspace
+.DS_Store
+Thumbs.db
+报错.md
+
+# Local frontend previews
+frontend-preview/

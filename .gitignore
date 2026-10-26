@@ -9,6 +9,7 @@
 *.pem
 
 # Build outputs and runtime files
+/.build/
 **/target/
 **/node_modules/
 **/dist/
