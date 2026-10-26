@@ -7,6 +7,8 @@
 [Gitee](https://gitee.com/zzten00/ten-api-full)。后续项目变更完成验证后，应提交并同步推送两个仓库。
 本地已配置包含两个推送地址的 `all` 远程，使用 `git push all HEAD` 同步当前分支。
 两个目标的推送分别执行，需确认两边均成功。
+日常修改可在工作区根目录使用 `commit.ps1 -Message "提交说明"` 一次完成暂存、提交和双仓库推送；
+单独重试 GitHub 使用 `commit.ps1 -PushOnly -Remote GitHub`。操作示例见[工作区说明](../README.md#提交与双仓库推送)。
 
 TEN API 是一个基于 **Spring Boot + Spring Cloud Gateway + Dubbo** 的 API 开放平台，
 提供接口发布与管理、用户登录鉴权、AK/SK 签名校验、防重放、限流熔断、调用次数统计与
