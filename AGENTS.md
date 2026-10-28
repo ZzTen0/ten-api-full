@@ -1,26 +1,24 @@
-# Workspace instructions
+# 工作区规则
 
-## TEN API repository synchronization
+## TEN API 仓库同步
 
-The user requires future changes to the TEN API project to be committed and pushed to both repositories after the task is complete and appropriate validation passes, unless the user explicitly requests local-only work or postpones pushing:
+用户要求：TEN API 项目的后续修改在任务完成并通过适当验证后，提交并同时推送到以下两个仓库；用户明确要求仅本地修改或暂缓推送时除外：
 
-- GitHub: https://github.com/ZzTen0/ten-api-full.git
-- Gitee: https://gitee.com/zzten00/ten-api-full.git
+- GitHub：https://github.com/ZzTen0/ten-api-full.git
+- Gitee：https://gitee.com/zzten00/ten-api-full.git
 
-This requirement applies to `ten-api-full/` and its workspace-level supporting files. Other projects in this workspace are outside this repository's project scope.
+本规则适用于 `ten-api-full/` 及其工作区级配套文件。工作区内的其他项目不属于本仓库的项目范围。
 
-- The Git root is `D:\CODE\Backstage-end`; the application root is `D:\CODE\Backstage-end\ten-api-full`.
-- The `all` remote has both repositories as push URLs. Prefer `git push all HEAD` to push the current branch to both destinations. `remote.pushDefault=all` also makes ordinary pushes use both destinations, unless a branch-specific setting overrides it.
-- The root `commit.ps1 -Message "description"` stages the TEN API scope, commits it, and pushes the `gitee` and `github` remotes separately with per-destination results. Run appropriate validation first. Use `commit.ps1 -PushOnly -Remote GitHub` or `-Remote Gitee` to retry only a failed destination without staging or committing again.
-- Stage only changes relevant to the current task, accounting for any explicitly authorized pending directory migration. Preserve unrelated user changes.
-- Never commit `.env`, password files, private keys, build output, or local repository backups. Preserve the existing ignore rules.
-- A push to multiple URLs is not atomic. Check the result for both repositories; if one fails, report the partial result and retry only the failed destination after resolving the cause.
-- Do not force-push or overwrite remote history without explicit user authorization. If remote commits prevent a normal push, inspect the divergence and preserve both sides' work.
-- Report actual push outcomes. Configuring a remote or completing a dry run does not mean changes were published.
+- Git 根目录为 `D:\CODE\Backstage-end`，应用根目录为 `D:\CODE\Backstage-end\ten-api-full`。
+- `all` 远程已配置两个推送地址。可优先使用 `git push all HEAD` 同步当前分支；`remote.pushDefault=all` 使未被分支设置覆盖的普通推送也使用该远程。
+- 根目录的 `commit.ps1 -Message "提交说明"` 会暂存 TEN API 范围内的变更，创建提交，并分别推送 `gitee` 和 `github`，逐一报告结果。运行前先完成必要验证。
+- 某个仓库失败后，使用 `commit.ps1 -PushOnly -Remote GitHub` 或 `-Remote Gitee` 单独重试，不重复暂存或创建提交。
+- 仅暂存本次任务相关变更；已明确授权的待提交目录迁移可一并处理。保留用户的无关修改。
+- 不得提交 `.env`、密码文件、私钥、构建产物或本地仓库备份，保留现有忽略规则。
+- 多地址推送不具备原子性，必须分别检查两个仓库的结果。若仅一边失败，应如实报告，并在解决原因后仅重试失败的一边。
+- 未经用户明确授权，不得强制推送或覆盖远程历史。远程提交导致普通推送失败时，先检查分歧并保留双方工作。
+- 只报告实际推送结果。配置远程或完成预演不代表已经发布变更。
 
-## Code comments and formatting
+## 通用开发规范
 
-- Follow the existing Java code style when adding or editing TEN API code. Use Chinese Javadoc for new classes and methods, explaining responsibilities, parameters, return values, and relevant failure conditions.
-- Document request/response fields with their meaning, defaults, limits, units, and conditional requirements. Do not leave empty `@param` or `@return` descriptions.
-- Explain important authentication, quota, encoding, and algorithm decisions with concise Chinese comments. Keep annotations and declarations on separate lines and separate methods with blank lines.
-- Give new test classes and frontend helpers clear descriptions of their purpose. Update comments when behavior changes; do not invent authors or creation dates.
+注释与排版、命名及跨层契约一致性、版本更新和发布资料同步，统一遵循 Codex 的全局中文规则。本文件仅保留本仓库的目录与双仓库同步要求，不再重复维护特定编程语言的通用规则。
