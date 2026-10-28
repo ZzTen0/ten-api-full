@@ -14,13 +14,19 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * SDK 实际 HTTP 请求签名测试。
+ *
+ * <p>使用临时本地 HTTP 服务核对编码路径、查询串、UTF-8 请求体及失败状态处理。</p>
+ */
 class ApiClientSigningTest {
     private HttpServer server;
     private ApiClient client;
     private final AtomicReference<Throwable> error = new AtomicReference<>();
     private final AtomicReference<String> target = new AtomicReference<>();
 
-    @BeforeEach void setUp() throws Exception {
+    @BeforeEach
+    void setUp() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             try {
@@ -47,34 +53,40 @@ class ApiClientSigningTest {
         client.setGatewayHost("http://127.0.0.1:" + server.getAddress().getPort());
     }
 
-    @AfterEach void tearDown() {
+    @AfterEach
+    void tearDown() {
         server.stop(0);
         assertNull(error.get(), () -> String.valueOf(error.get()));
     }
 
-    @Test void signsGetQueryExactlyAsSent() {
+    @Test
+    void signsGetQueryExactlyAsSent() {
         assertEquals("ok", client.getNameByGET("张 三&x=1"));
         assertTrue(target.get().contains("%26x%3D1"));
     }
 
-    @Test void signsEncodedPathExactlyAsSent() {
+    @Test
+    void signsEncodedPathExactlyAsSent() {
         assertEquals("ok", client.getNameByPOSTPath("a b"));
         assertEquals("/api/name/path/a%20b", target.get());
     }
 
-    @Test void signsActualUtf8JsonBytes() {
+    @Test
+    void signsActualUtf8JsonBytes() {
         Username username = new Username();
         username.setUsername("测试名字");
         assertEquals("ok", client.getNameByPOSTJson(username));
     }
 
-    @Test void rejectsHttpErrors() {
+    @Test
+    void rejectsHttpErrors() {
         server.removeContext("/");
         server.createContext("/", exchange -> { exchange.sendResponseHeaders(403, -1); exchange.close(); });
         assertThrows(IllegalStateException.class, () -> client.getNameByGET("test"));
     }
 
-    @Test void rejectsAbsoluteUrlAndMissingCredentials() {
+    @Test
+    void rejectsAbsoluteUrlAndMissingCredentials() {
         assertThrows(IllegalArgumentException.class, () -> client.request("POST", "https://example.com", "{}"));
         client.setSecretKey("");
         assertThrows(IllegalStateException.class, () -> client.getNameByGET("test"));

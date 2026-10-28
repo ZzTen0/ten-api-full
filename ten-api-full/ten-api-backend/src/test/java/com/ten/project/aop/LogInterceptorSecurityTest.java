@@ -16,8 +16,14 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * 请求日志敏感信息保护测试。
+ *
+ * <p>验证日志切面不读取请求参数，以及密码和试调用文本不会通过对象字符串输出。</p>
+ */
 class LogInterceptorSecurityTest {
-    @Test void neverStringifiesArgumentsAndLogsCompletionOnFailure() throws Throwable {
+    @Test
+    void neverStringifiesArgumentsAndLogsCompletionOnFailure() throws Throwable {
         Logger logger = (Logger) LoggerFactory.getLogger(LogInterceptor.class);
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();
@@ -37,7 +43,8 @@ class LogInterceptorSecurityTest {
         }
     }
 
-    @Test void credentialsAreExcludedFromDtoToString() {
+    @Test
+    void credentialsAreExcludedFromDtoToString() {
         UserLoginRequest login = new UserLoginRequest();
         login.setUserPassword("sensitive-login-password");
         UserRegisterRequest register = new UserRegisterRequest();

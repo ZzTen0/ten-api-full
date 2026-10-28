@@ -23,11 +23,18 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+/**
+ * 工具接口控制器测试。
+ *
+ * <p>使用 MockMvc 和内部鉴权过滤器验证 11 个业务入口、参数绑定及统一错误响应。</p>
+ */
 class ToolControllerTest {
     private static final String SECRET = "tool-controller-internal-secret-0123456789";
     private MockMvc mvc;
 
-    @BeforeEach @SuppressWarnings("unchecked") void setUp() {
+    @BeforeEach
+    @SuppressWarnings("unchecked")
+    void setUp() {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         ValueOperations<String, String> values = mock(ValueOperations.class);
         when(redis.opsForValue()).thenReturn(values);
@@ -50,7 +57,8 @@ class ToolControllerTest {
                 .contentType(MediaType.APPLICATION_JSON).content(body));
     }
 
-    @Test void allElevenEndpointsAreCallableThroughAuthenticationFilter() throws Exception {
+    @Test
+    void allElevenEndpointsAreCallableThroughAuthenticationFilter() throws Exception {
         call("POST", "/api/tools/password", "{}").andExpect(status().isOk()).andExpect(jsonPath("$.data.length").value(16))
                 .andExpect(header().string("Cache-Control", "no-store"));
         call("GET", "/api/tools/uuid?count=2&hyphens=false", "").andExpect(status().isOk()).andExpect(jsonPath("$.data.uuids.length()").value(2));
@@ -69,18 +77,21 @@ class ToolControllerTest {
         call("GET", "/api/tools/http-status?code=404", "").andExpect(status().isOk()).andExpect(jsonPath("$.data.name").value("NOT_FOUND"));
     }
 
-    @Test void unsignedRequestsCannotReachAnyTool() throws Exception {
+    @Test
+    void unsignedRequestsCannotReachAnyTool() throws Exception {
         mvc.perform(get("/api/tools/uuid").contextPath("/api")).andExpect(status().isForbidden());
     }
 
-    @ParameterizedTest @CsvSource({"/api/tools/uuid?count=101", "/api/tools/random?count=1001",
+    @ParameterizedTest
+    @CsvSource({"/api/tools/uuid?count=101", "/api/tools/random?count=1001",
             "/api/tools/random?min=10&max=1", "/api/tools/http-status?code=599",
             "/api/tools/http-status?code=invalid", "/api/tools/http-status"})
     void invalidGetParametersReturnConsistentErrors(String target) throws Exception {
         call("GET", target, "").andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(40000));
     }
 
-    @Test void jsonValidationAndInvalidPayloadsReturn400WithoutEchoingInput() throws Exception {
+    @Test
+    void jsonValidationAndInvalidPayloadsReturn400WithoutEchoingInput() throws Exception {
         call("POST", "/api/tools/password", "{\"length\":129}").andExpect(status().isBadRequest());
         call("POST", "/api/tools/text/stats", "{}").andExpect(status().isBadRequest());
         call("POST", "/api/tools/units", "{\"category\":\"length\",\"from\":\"m\",\"to\":\"cm\"}").andExpect(status().isBadRequest());

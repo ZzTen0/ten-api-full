@@ -34,32 +34,72 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
-/** Verify the exact request before consuming a nonce or quota. */
+/**
+ * 开放接口签名鉴权、接口状态校验及调用额度过滤器。
+ *
+ * <p>校验真实请求内容后登记 nonce，按已上线接口的实际 ID 扣减额度，
+ * 并为下游接口生成绑定请求内容及用户身份的内部签名。</p>
+ */
 @Slf4j
 @Component
 public class ApiAuthInvokeFilter implements GlobalFilter, Ordered {
+    /**
+     * 用于检测错误配置到开放接口路径的鉴权白名单。
+     */
     private static final AntPathMatcher MATCHER = new AntPathMatcher();
 
+    /**
+     * 通过 AK 查询调用用户的内部 RPC 服务。
+     */
     @DubboReference(timeout = 2000, retries = 0, check = false, lazy = true)
     private InnerUserService innerUserService;
+
+    /**
+     * 按用户和实际接口原子扣减额度的内部 RPC 服务。
+     */
     @DubboReference(timeout = 2000, retries = 0, check = false, lazy = true)
     private InnerUserInterfaceInfoService innerUserInterfaceInfoService;
+
+    /**
+     * 按请求方法及路径解析已上线接口的内部 RPC 服务。
+     */
     @DubboReference(timeout = 2000, retries = 0, check = false, lazy = true)
     private InnerInterfaceInfoService innerInterfaceInfoService;
 
+    /**
+     * 用户凭据的短期本地缓存，最多 10000 项，写入后两分钟失效。
+     */
     private final Cache<String, InvokeUserVO> invokeUserCache = Caffeine.newBuilder()
             .maximumSize(10000).expireAfterWrite(2, TimeUnit.MINUTES).build();
 
+    /**
+     * 响应式 Redis 操作模板，用于原子登记防重放记录。
+     */
     @Autowired
     private ReactiveStringRedisTemplate redisTemplate;
+
+    /**
+     * 网关鉴权配置，开放接口不会因白名单配置而绕过验签。
+     */
     @Autowired
     private GatewayInvokeProperties properties;
+
+    /**
+     * 网关与接口服务共享的独立内部鉴权密钥。
+     */
     @Value("${gateway.internal-secret:}")
     private String internalSecret;
 
+    /**
+     * 校验开放接口请求，并向下游透传可验证的用户身份。
+     *
+     * @param exchange 当前响应式请求上下文
+     * @param chain 后续网关过滤器链
+     * @return 鉴权失败响应或下游过滤器链的异步处理结果
+     */
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        // Client-supplied identity headers must never be trusted, even on bypass routes.
+        // 所有路由先清理客户端伪造的内部身份头，管理端放行路径也不例外。
         ServerHttpRequest clean = exchange.getRequest().mutate().headers(headers -> {
             headers.remove("X-User-Id");
             headers.remove("X-Gateway-Signature");
@@ -68,7 +108,7 @@ public class ApiAuthInvokeFilter implements GlobalFilter, Ordered {
         ServerWebExchange cleanExchange = exchange.mutate().request(clean).build();
         String path = clean.getPath().value();
         if (!needSignatureCheck(path)) return chain.filter(cleanExchange);
-        // A whitelist may bypass session routes, never an open API.
+        // 开放接口必须验签，白名单仅用于管理端路径，不能扩展成开放接口的绕过入口。
         if (properties.getWhiteList() != null) {
             for (String white : properties.getWhiteList()) {
                 if (MATCHER.match(white, path)) {
@@ -92,6 +132,7 @@ public class ApiAuthInvokeFilter implements GlobalFilter, Ordered {
             return error(cleanExchange, HttpStatus.FORBIDDEN, "鉴权参数无效，请使用 v2 签名");
         }
 
+        // 读取受限请求体后释放原始缓冲区，后续用同一字节数组完成验签与转发。
         Mono<byte[]> body = DataBufferUtils.join(clean.getBody(), RequestSignature.MAX_BODY_BYTES)
                 .map(buffer -> {
                     try {
@@ -106,7 +147,7 @@ public class ApiAuthInvokeFilter implements GlobalFilter, Ordered {
         return body.onErrorResume(DataBufferLimitException.class, e ->
                         error(cleanExchange, HttpStatus.PAYLOAD_TOO_LARGE, "请求体超过 1 MiB").then(Mono.empty()))
                 .flatMap(bytes -> authenticate(clean, ak, nonce, timestamp, sign, bytes)
-                        // Only authentication errors are converted here; downstream failures keep their status.
+                        // 仅在鉴权阶段转换异常，下游接口错误保留原来的响应语义。
                         .onErrorResume(InvokeException.class, e ->
                                 error(cleanExchange, e.status, e.getMessage()).then(Mono.empty()))
                         .onErrorResume(e -> {
@@ -122,7 +163,13 @@ public class ApiAuthInvokeFilter implements GlobalFilter, Ordered {
                                 headers.set("X-User-Id", userId);
                                 headers.set("X-Gateway-Signature", proof);
                             }).build();
+                            // 请求体已被验签消费，必须为下游提供可重新读取的字节流。
                             ServerHttpRequestDecorator cached = new ServerHttpRequestDecorator(forwarded) {
+                                /**
+                                 * 重放已验证的请求体字节。
+                                 *
+                                 * @return 每次订阅独立包装的请求体缓冲区
+                                 */
                                 @Override
                                 public Flux<DataBuffer> getBody() {
                                     return Flux.defer(() -> Flux.just(exchange.getResponse().bufferFactory().wrap(bytes)));
@@ -132,6 +179,17 @@ public class ApiAuthInvokeFilter implements GlobalFilter, Ordered {
                         }));
     }
 
+    /**
+     * 验证签名、接口上线状态和 nonce，并按实际接口扣减额度。
+     *
+     * @param request 已清理客户端伪造内部身份头的原始请求
+     * @param ak 调用方访问密钥
+     * @param nonce 本次请求随机串
+     * @param timestamp UNIX 秒级时间戳字符串
+     * @param suppliedSign 客户端提供的签名
+     * @param bytes 实际请求体字节
+     * @return 完成鉴权及额度扣减的调用用户；失败以响应式异常信号返回
+     */
     private Mono<InvokeUserVO> authenticate(ServerHttpRequest request, String ak, String nonce,
                                            String timestamp, String suppliedSign, byte[] bytes) {
         return Mono.fromCallable(() -> invokeUserCache.get(ak, innerUserService::getInvokeUser))
@@ -162,29 +220,60 @@ public class ApiAuthInvokeFilter implements GlobalFilter, Ordered {
                 });
     }
 
+    /**
+     * 判断路径是否属于需要 AK/SK 签名的开放接口。
+     *
+     * @param path 当前请求路径
+     * @return 非管理路径的开放接口返回 true，管理端交由后端 Session 鉴权
+     */
     private boolean needSignatureCheck(String path) {
         if (path.startsWith("/api/user/") || path.startsWith("/api/interfaceInfo/")
                 || path.startsWith("/api/userInterfaceInfo/") || path.startsWith("/api/post/")) return false;
         return path.startsWith("/api/");
     }
 
+    /**
+     * 输出统一网关错误响应。
+     *
+     * @param exchange 当前请求上下文
+     * @param status HTTP 状态码
+     * @param message 服务端固定错误说明，不传入原始异常或请求文本
+     * @return 写入错误响应的异步结果
+     */
     private Mono<Void> error(ServerWebExchange exchange, HttpStatus status, String message) {
         exchange.getResponse().setStatusCode(status);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-        // Messages are fixed server strings; never expose RPC/Redis exception text or request data.
+        // 只输出服务端固定说明，不暴露 RPC、Redis 异常原文或用户请求数据。
         byte[] json = ("{\"code\":" + (status == HttpStatus.FORBIDDEN ? 40300 : status.value() * 100)
                 + ",\"message\":\"" + message + "\",\"data\":null}").getBytes(StandardCharsets.UTF_8);
         return exchange.getResponse().writeWith(Mono.just(exchange.getResponse().bufferFactory().wrap(json)));
     }
 
+    /**
+     * 可向调用方返回受控说明的鉴权或额度异常。
+     */
     private static class InvokeException extends RuntimeException {
+        /**
+         * 应返回的 HTTP 状态码。
+         */
         private final HttpStatus status;
+        /**
+         * 创建受控调用异常。
+         *
+         * @param status HTTP 状态码
+         * @param message 面向调用方的错误说明
+         */
         InvokeException(HttpStatus status, String message) {
             super(message);
             this.status = status;
         }
     }
 
+    /**
+     * 指定过滤器执行顺序，使路由级限流先于签名校验和 RPC 扣减。
+     *
+     * @return 过滤器排序值 10
+     */
     @Override
     public int getOrder() {
         return 10;

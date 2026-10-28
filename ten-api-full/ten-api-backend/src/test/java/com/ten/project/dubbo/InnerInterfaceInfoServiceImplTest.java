@@ -12,11 +12,17 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+/**
+ * 内部接口元数据解析测试。
+ *
+ * <p>验证上线状态筛选、方法匹配、精确路径优先及未知接口拒绝。</p>
+ */
 class InnerInterfaceInfoServiceImplTest {
     private InterfaceInfoMapper mapper;
     private InnerInterfaceInfoServiceImpl service;
 
-    @BeforeEach void setUp() {
+    @BeforeEach
+    void setUp() {
         mapper = mock(InterfaceInfoMapper.class);
         service = new InnerInterfaceInfoServiceImpl();
         ReflectionTestUtils.setField(service, "mapper", mapper);
@@ -28,7 +34,9 @@ class InnerInterfaceInfoServiceImplTest {
         return info;
     }
 
-    @Test @SuppressWarnings("unchecked") void resolvesActualIdAndQueriesOnlyOnlineMethodMatches() {
+    @Test
+    @SuppressWarnings("unchecked")
+    void resolvesActualIdAndQueriesOnlyOnlineMethodMatches() {
         when(mapper.selectList(any())).thenReturn(Collections.singletonList(registration(99L, "/api/tools/base64")));
         assertEquals(99L, service.resolveOnlineInterfaceId("post", "/api/tools/base64"));
         ArgumentCaptor<QueryWrapper<InterfaceInfo>> query = ArgumentCaptor.forClass(QueryWrapper.class);
@@ -38,14 +46,16 @@ class InnerInterfaceInfoServiceImplTest {
         assertTrue(query.getValue().getParamNameValuePairs().containsValue("POST"));
     }
 
-    @Test void exactPathsTakePriorityOverTemplates() {
+    @Test
+    void exactPathsTakePriorityOverTemplates() {
         when(mapper.selectList(any())).thenReturn(Arrays.asList(
                 registration(1L, "/api/name/{name}"), registration(2L, "/api/name/object")));
         assertEquals(2L, service.resolveOnlineInterfaceId("POST", "/api/name/object"));
         assertEquals(1L, service.resolveOnlineInterfaceId("POST", "/api/name/ten"));
     }
 
-    @Test void unknownOrOfflinePathsHaveNoCallableId() {
+    @Test
+    void unknownOrOfflinePathsHaveNoCallableId() {
         when(mapper.selectList(any())).thenReturn(Collections.emptyList());
         assertNull(service.resolveOnlineInterfaceId("GET", "/api/tools/uuid"));
         assertNull(service.resolveOnlineInterfaceId("GET", "/outside"));

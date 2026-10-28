@@ -1,3 +1,9 @@
+/**
+ * 解析接口目录中的参数描述，兼容空值、旧结构和无效 JSON。
+ *
+ * @param {string|undefined} raw 序列化后的参数描述数组
+ * @returns {Array<object>} 参数描述列表，解析失败时返回空数组
+ */
 export function parseParameterSchema(raw) {
   try {
     const schema = JSON.parse(raw || '[]')
@@ -7,12 +13,26 @@ export function parseParameterSchema(raw) {
   }
 }
 
+/**
+ * 提取参数描述中的示例值，保留数字和布尔值等原始类型。
+ *
+ * @param {string|undefined} raw 序列化后的参数描述数组
+ * @returns {object} 用于填充试调用编辑器的示例参数对象
+ */
 export function parameterExample(raw) {
   return Object.fromEntries(parseParameterSchema(raw)
     .filter((field) => field.example !== undefined)
     .map((field) => [field.name, field.example]))
 }
 
+/**
+ * 根据编辑器参数生成 SDK 与 cURL 示例的路径和请求体。
+ *
+ * @param {object} detail 接口元数据，包含 method 和 url
+ * @param {string} text 用户填写的 JSON 对象字符串
+ * @returns {{method: string, path: string, body: string}} 编码后的路径及请求体
+ * @throws {Error} 参数不是合法 JSON 对象或缺少路径变量
+ */
 export function prepareExample(detail, text) {
   const params = JSON.parse(text)
   if (!params || Array.isArray(params) || typeof params !== 'object') {
@@ -36,6 +56,9 @@ export function prepareExample(detail, text) {
   return { method, path, body: method === 'GET' ? '' : JSON.stringify(remaining) }
 }
 
+/**
+ * 内置工具的静态响应示例，仅说明响应结构，不代表真实调用结果。
+ */
 export const responseExamples = {
   '/api/tools/password': { password: 'aB7!qR8@tY2#uI6$', length: 16 },
   '/api/tools/uuid': { uuids: ['b3e968fe-5b92-4639-8aa8-712ae632017e'], count: 1 },

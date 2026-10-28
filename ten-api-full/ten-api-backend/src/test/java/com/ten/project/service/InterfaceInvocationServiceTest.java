@@ -12,13 +12,19 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * 在线试调用服务测试。
+ *
+ * <p>覆盖所选接口路由、GET/POST 参数编码、网关地址继承和上游错误传播。</p>
+ */
 class InterfaceInvocationServiceTest {
     private ApiClient client;
     private InterfaceInvocationService service;
     private User user;
     private InterfaceInfo info;
 
-    @BeforeEach void setUp() {
+    @BeforeEach
+    void setUp() {
         ApiClient template = mock(ApiClient.class);
         client = mock(ApiClient.class);
         when(template.withCredentials("ak", "sk")).thenReturn(client);
@@ -27,7 +33,8 @@ class InterfaceInvocationServiceTest {
         info = new InterfaceInfo();
     }
 
-    @Test void getQueryUsesSelectedEndpointAndEncodesParameters() {
+    @Test
+    void getQueryUsesSelectedEndpointAndEncodesParameters() {
         info.setUrl("/api/tools/random"); info.setMethod("GET");
         when(client.request("GET", "/api/tools/random?min=1&max=5&unique=true", ""))
                 .thenReturn("{\"code\":0,\"data\":{\"numbers\":[1]}}");
@@ -36,20 +43,23 @@ class InterfaceInvocationServiceTest {
         verify(client).request("GET", "/api/tools/random?min=1&max=5&unique=true", "");
     }
 
-    @Test void postUsesActualJsonAndSelectedEndpoint() {
+    @Test
+    void postUsesActualJsonAndSelectedEndpoint() {
         info.setUrl("/api/tools/base64"); info.setMethod("POST");
         when(client.request("POST", "/api/tools/base64", "{\"text\":\"你好\"}")).thenReturn("{\"code\":0}");
         service.invoke(info, "{\"text\":\"你好\"}", user);
         verify(client).request("POST", "/api/tools/base64", "{\"text\":\"你好\"}");
     }
 
-    @Test void legacyPathParametersRemainCallableAndAreEncoded() {
+    @Test
+    void legacyPathParametersRemainCallableAndAreEncoded() {
         info.setUrl("/api/name/path/{name}"); info.setMethod("POST");
         when(client.request("POST", "/api/name/path/a%20b", "{}")).thenReturn("POST 你的名字是a b");
         assertEquals("POST 你的名字是a b", service.invoke(info, "{\"name\":\"a b\"}", user));
     }
 
-    @Test void onlyGatewayPathsAreAllowedAndMalformedParametersAreRejected() {
+    @Test
+    void onlyGatewayPathsAreAllowedAndMalformedParametersAreRejected() {
         info.setUrl("http://127.0.0.1:3306"); info.setMethod("POST");
         assertThrows(BusinessException.class, () -> service.invoke(info, "{}", user));
         info.setUrl("/api/tools/../user/delete");
@@ -62,7 +72,8 @@ class InterfaceInvocationServiceTest {
         verifyNoInteractions(client);
     }
 
-    @Test void upstreamValidationFailureDoesNotBecomeASuccessResult() {
+    @Test
+    void upstreamValidationFailureDoesNotBecomeASuccessResult() {
         info.setUrl("/api/tools/password"); info.setMethod("POST");
         when(client.request("POST", "/api/tools/password", "{\"length\":999}"))
                 .thenThrow(new ApiClientException(400, "length 参数无效"));
@@ -71,7 +82,8 @@ class InterfaceInvocationServiceTest {
         assertEquals("length 参数无效", error.getMessage());
     }
 
-    @Test void sdkCredentialCopyPreservesConfiguredGateway() {
+    @Test
+    void sdkCredentialCopyPreservesConfiguredGateway() {
         ApiClient template = new ApiClient();
         template.setGatewayHost("http://ten-api-gateway:8090");
         ApiClient scoped = template.withCredentials("ak", "sk");

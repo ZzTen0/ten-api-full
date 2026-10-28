@@ -23,16 +23,42 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * 内置工具业务服务。
+ *
+ * <p>集中实现工具计算、操作参数校验及资源上限控制，所有工具均在本地完成计算。</p>
+ */
 @Service
 public class ToolService {
+    /**
+     * 密码、随机整数和随机打乱共用的安全随机数生成器。
+     */
     private static final SecureRandom RANDOM = new SecureRandom();
+
+    /**
+     * 单位换算的十进制运算精度。
+     */
     private static final MathContext PRECISION = MathContext.DECIMAL128;
+
+    /**
+     * 英文单词识别规则，允许单词内部包含连字符或撇号。
+     */
     private static final Pattern WORD = Pattern.compile("[A-Za-z]+(?:['’-][A-Za-z]+)*");
+
+    /**
+     * 长度单位相对于米的精确换算系数。
+     */
     private static final Map<String, BigDecimal> LENGTH = factors(
             "mm", "0.001", "cm", "0.01", "m", "1", "km", "1000",
             "in", "0.0254", "ft", "0.3048", "yd", "0.9144", "mi", "1609.344");
+    /**
+     * 重量单位相对于千克的精确换算系数。
+     */
     private static final Map<String, BigDecimal> WEIGHT = factors(
             "mg", "0.000001", "g", "0.001", "kg", "1", "lb", "0.45359237", "oz", "0.028349523125");
+    /**
+     * 工具专用 JSON 解析器，拒绝重复键和多根值，并保留数值精度。
+     */
     private final ObjectMapper json = new ObjectMapper()
             .enable(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
@@ -40,6 +66,13 @@ public class ToolService {
             .enable(DeserializationFeature.USE_BIG_INTEGER_FOR_INTS)
             .setNodeFactory(JsonNodeFactory.withExactBigDecimals(true));
 
+    /**
+     * 生成满足长度及字符类型要求的随机密码。
+     *
+     * @param request 密码长度与字符类型配置
+     * @return 密码及长度
+     * @throws IllegalArgumentException 长度超出范围或未选择字符类型
+     */
     public Map<String, Object> password(ToolRequests.Password request) {
         range(request.getLength(), 4, 128, "length");
         List<String> groups = new ArrayList<>();
@@ -50,6 +83,7 @@ public class ToolService {
         if (groups.isEmpty()) throw invalid("至少选择一种字符类型");
         String alphabet = String.join("", groups);
         List<Character> chars = new ArrayList<>();
+        // 先为每种选定类型取一个字符，再补足长度并安全打乱，保证类型覆盖。
         for (String group : groups) chars.add(group.charAt(RANDOM.nextInt(group.length())));
         while (chars.size() < request.getLength()) chars.add(alphabet.charAt(RANDOM.nextInt(alphabet.length())));
         Collections.shuffle(chars, RANDOM);
@@ -58,6 +92,14 @@ public class ToolService {
         return result("password", password.toString(), "length", request.getLength());
     }
 
+    /**
+     * 批量生成 UUID v4。
+     *
+     * @param count 生成数量，范围为 1～100
+     * @param hyphens 是否保留 UUID 中的连字符
+     * @return UUID 列表及数量
+     * @throws IllegalArgumentException 数量超出范围
+     */
     public Map<String, Object> uuids(int count, boolean hyphens) {
         range(count, 1, 100, "count");
         List<String> ids = new ArrayList<>();
@@ -68,6 +110,15 @@ public class ToolService {
         return result("uuids", ids, "count", count);
     }
 
+    /**
+     * 转换带指定时区的日期时间与 UNIX 时间戳。
+     *
+     * @param request 转换方向、时间单位、时区和待转换值
+     * @return 时间戳、带偏移的日期时间、单位及时区
+     * @throws IllegalArgumentException 操作无效、缺少参数或本地时间存在夏令时歧义
+     * @throws DateTimeException 日期时间、时区无效或时间戳超出支持范围
+     * @throws ArithmeticException 结果无法用对应精度的时间戳表示
+     */
     public Map<String, Object> timestamp(ToolRequests.Timestamp request) {
         String unit = choice(request.getUnit(), "unit", "seconds", "milliseconds");
         ZoneId zone = ZoneId.of(request.getZoneId());
@@ -90,6 +141,13 @@ public class ToolService {
                 "zoneId", zone.getId());
     }
 
+    /**
+     * 统计文本的 Unicode 字符、非空白字符、汉字、英文单词及行数。
+     *
+     * @param request 待统计文本，字符上限按 UTF-16 代码单元校验
+     * @return 各统计维度的计数；空文本为 0 行，末尾换行保留一个空行
+     * @throws IllegalArgumentException 文本为 null 或长度超出范围
+     */
     public Map<String, Object> text(ToolRequests.Text request) {
         String text = checkedText(request);
         long chinese = text.codePoints().filter(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.HAN).count();
@@ -102,6 +160,13 @@ public class ToolService {
                 "lines", text.isEmpty() ? 0 : text.split("\\r\\n|\\n|\\r", -1).length);
     }
 
+    /**
+     * 编码 UTF-8 文本或严格解码标准 Base64。
+     *
+     * @param request 操作类型和待转换文本
+     * @return 操作类型及转换后的文本
+     * @throws IllegalArgumentException 操作无效、Base64 无效或解码字节不是合法 UTF-8
+     */
     public Map<String, Object> base64(ToolRequests.Base64 request) {
         String text = checkedText(request);
         String operation = choice(request.getOperation(), "operation", "encode", "decode");
@@ -120,10 +185,17 @@ public class ToolService {
         return result("operation", operation, "result", output);
     }
 
+    /**
+     * 校验 JSON，并按指定模式格式化或压缩。
+     *
+     * @param request JSON 文本及处理模式
+     * @return 校验状态、处理模式及处理后的 JSON 文本
+     * @throws IllegalArgumentException JSON 无效、重复键、多根值、空白输入或嵌套超过 128 层
+     */
     public Map<String, Object> json(ToolRequests.Json request) {
         String text = checkedText(request);
         String mode = choice(request.getMode(), "mode", "format", "compress");
-        // Bound recursive parsing independently of the HTTP byte limit.
+        // HTTP 字节上限不能限制递归深度，因此在 JSON 解析前单独检查嵌套层数。
         checkJsonDepth(text);
         try {
             JsonNode node = json.readTree(text);
@@ -138,6 +210,14 @@ public class ToolService {
         }
     }
 
+    /**
+     * 计算 UTF-8 文本的 MD5、SHA-1、SHA-256 或 SHA-512 摘要。
+     *
+     * @param request 待计算文本和摘要算法
+     * @return 算法名称与小写十六进制摘要
+     * @throws IllegalArgumentException 文本无效或算法不受支持
+     * @throws IllegalStateException 运行环境缺少所选摘要算法
+     */
     public Map<String, Object> digest(ToolRequests.Digest request) {
         String algorithm = choice(request.getAlgorithm().toUpperCase(Locale.ROOT),
                 "algorithm", "MD5", "SHA-1", "SHA-256", "SHA-512");
@@ -151,6 +231,16 @@ public class ToolService {
         }
     }
 
+    /**
+     * 在闭区间内生成随机整数，支持结果不重复。
+     *
+     * @param min 最小值，范围为正负十亿
+     * @param max 最大值，范围为正负十亿且不得小于 min
+     * @param count 结果数量，范围为 1～1000
+     * @param unique 是否要求结果不重复
+     * @return 随机整数列表及实际生成参数
+     * @throws IllegalArgumentException 取值范围无效或不重复数量超过可选整数个数
+     */
     public Map<String, Object> random(int min, int max, int count, boolean unique) {
         range(min, -1000000000, 1000000000, "min");
         range(max, -1000000000, 1000000000, "max");
@@ -160,6 +250,7 @@ public class ToolService {
         if (unique && count > size) throw invalid("不重复随机数的数量不能超过范围内的整数个数");
         List<Integer> numbers = new ArrayList<>();
         if (unique) {
+            // Floyd 抽样只执行 count 次，避免接近满区间时反复碰撞导致重试。
             Set<Integer> selected = new LinkedHashSet<>();
             for (long j = size - count; j < size; j++) {
                 int value = RANDOM.nextInt((int) (j + 1));
@@ -173,6 +264,14 @@ public class ToolService {
         return result("numbers", numbers, "min", min, "max", max, "count", count, "unique", unique);
     }
 
+    /**
+     * 计算日期的有符号间隔或加减指定天数。
+     *
+     * @param request 操作类型、日期和增减天数
+     * @return 日期间隔或加减后的日期
+     * @throws IllegalArgumentException 操作无效、缺少必要日期或天数超出范围
+     * @throws DateTimeException 日期无效或运算结果超出支持范围
+     */
     public Map<String, Object> date(ToolRequests.DateCalculation request) {
         if ("difference".equalsIgnoreCase(request.getOperation())) {
             LocalDate start = LocalDate.parse(required(request.getStartDate(), "startDate"));
@@ -191,6 +290,13 @@ public class ToolService {
         throw invalid("operation 必须为 difference 或 add");
     }
 
+    /**
+     * 使用 DECIMAL128 精度换算长度、重量或温度。
+     *
+     * @param request 单位类别、源单位、目标单位及待换算数值
+     * @return 换算结果及原始参数
+     * @throws IllegalArgumentException 单位不匹配、数值超限或结果违反非负长度、重量及绝对零度约束
+     */
     public Map<String, Object> units(ToolRequests.UnitConversion request) {
         String category = choice(request.getCategory(), "category", "length", "weight", "temperature");
         String from = required(request.getFrom(), "from").toLowerCase(Locale.ROOT);
@@ -204,6 +310,7 @@ public class ToolService {
         if ("temperature".equals(category)) {
             choice(from, "from", "c", "f", "k");
             choice(to, "to", "c", "f", "k");
+            // 温度先统一转换为开尔文，以便集中校验绝对零度，再转换为目标单位。
             BigDecimal kelvin = "c".equals(from) ? value.add(new BigDecimal("273.15"))
                     : "f".equals(from) ? value.add(new BigDecimal("459.67")).multiply(new BigDecimal("5"))
                     .divide(new BigDecimal("9"), PRECISION) : value;
@@ -221,6 +328,13 @@ public class ToolService {
                 "result", converted.stripTrailingZeros());
     }
 
+    /**
+     * 查询框架收录的标准 HTTP 状态码及使用说明。
+     *
+     * @param code HTTP 状态码
+     * @return 状态码名称、原因短语、类别和中文说明
+     * @throws IllegalArgumentException 状态码未被收录
+     */
     public Map<String, Object> httpStatus(int code) {
         HttpStatus status = HttpStatus.resolve(code);
         if (status == null) throw invalid("未收录该 HTTP 状态码，请输入标准状态码，例如 200、404、500");
@@ -254,12 +368,25 @@ public class ToolService {
                 "category", categories[code / 100], "description", description);
     }
 
+    /**
+     * 校验通用文本输入。
+     *
+     * @param request 文本请求
+     * @return 已通过非空及长度校验的文本
+     * @throws IllegalArgumentException 文本为 null 或超过 65536 个 UTF-16 代码单元
+     */
     private static String checkedText(ToolRequests.Text request) {
         String text = request.getText();
         if (text == null || text.length() > 65536) throw invalid("text 不能为空且不能超过 65536 个 UTF-16 代码单元");
         return text;
     }
 
+    /**
+     * 在递归解析前限制 JSON 容器嵌套，忽略字符串内部的括号。
+     *
+     * @param text 待检查 JSON 文本
+     * @throws IllegalArgumentException 对象和数组的嵌套超过 128 层
+     */
     private static void checkJsonDepth(String text) {
         int depth = 0;
         boolean quoted = false, escaped = false;
@@ -275,28 +402,74 @@ public class ToolService {
         }
     }
 
+    /**
+     * 校验整数是否落在闭区间内。
+     *
+     * @param value 待检查值
+     * @param min 下界
+     * @param max 上界
+     * @param name 用于错误提示的参数名称
+     * @throws IllegalArgumentException 参数超出范围
+     */
     private static void range(int value, int min, int max, String name) {
         if (value < min || value > max) throw invalid(name + " 必须在 " + min + " 到 " + max + " 之间");
     }
 
+    /**
+     * 校验字符串参数是否必填。
+     *
+     * @param value 待检查值
+     * @param name 参数名称
+     * @return 非空白的原始值
+     * @throws IllegalArgumentException 参数为 null 或空白
+     */
     private static String required(String value, String name) {
         if (value == null || value.trim().isEmpty()) throw invalid(name + " 不能为空");
         return value;
     }
 
+    /**
+     * 按忽略大小写的方式匹配枚举值。
+     *
+     * @param value 待检查值
+     * @param name 参数名称
+     * @param choices 支持的规范取值
+     * @return 命中的规范取值
+     * @throws IllegalArgumentException 取值不在支持列表中
+     */
     private static String choice(String value, String name, String... choices) {
         for (String choice : choices) if (choice.equalsIgnoreCase(value)) return choice;
         throw invalid(name + " 必须为 " + String.join("、", choices));
     }
 
-    private static IllegalArgumentException invalid(String message) { return new IllegalArgumentException(message); }
+    /**
+     * 构造面向调用方的参数错误。
+     *
+     * @param message 不包含用户原始文本的错误说明
+     * @return 参数异常
+     */
+    private static IllegalArgumentException invalid(String message) {
+        return new IllegalArgumentException(message);
+    }
 
+    /**
+     * 构建只读单位换算系数表。
+     *
+     * @param entries 按单位名称、十进制系数交替排列的键值
+     * @return 单位到精确换算系数的只读映射
+     */
     private static Map<String, BigDecimal> factors(String... entries) {
         Map<String, BigDecimal> map = new HashMap<>();
         for (int i = 0; i < entries.length; i += 2) map.put(entries[i], new BigDecimal(entries[i + 1]));
         return Collections.unmodifiableMap(map);
     }
 
+    /**
+     * 按传入顺序构建工具结果。
+     *
+     * @param values 按字符串字段名、字段值交替排列的键值
+     * @return 保持插入顺序的结果映射
+     */
     private static Map<String, Object> result(Object... values) {
         Map<String, Object> map = new LinkedHashMap<>();
         for (int i = 0; i < values.length; i += 2) map.put((String) values[i], values[i + 1]);

@@ -6,10 +6,16 @@ import java.math.BigDecimal;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * 工具业务服务单元测试。
+ *
+ * <p>覆盖全部工具的正常结果、输入边界、编码精度、日期及随机数约束。</p>
+ */
 class ToolServiceTest {
     private final ToolService tools = new ToolService();
 
-    @Test void passwordsHaveSelectedCharacterClassesAndLength() {
+    @Test
+    void passwordsHaveSelectedCharacterClassesAndLength() {
         ToolRequests.Password request = new ToolRequests.Password();
         request.setLength(128);
         request.setSymbols(true);
@@ -21,7 +27,8 @@ class ToolServiceTest {
         assertTrue(password.matches(".*[^A-Za-z0-9].*"));
     }
 
-    @Test void passwordCanContainOnlyDigitsAndRejectsEmptyAlphabet() {
+    @Test
+    void passwordCanContainOnlyDigitsAndRejectsEmptyAlphabet() {
         ToolRequests.Password request = new ToolRequests.Password();
         request.setLowercase(false);
         request.setUppercase(false);
@@ -32,7 +39,9 @@ class ToolServiceTest {
         assertThrows(IllegalArgumentException.class, () -> tools.password(request));
     }
 
-    @Test @SuppressWarnings("unchecked") void createsUuidV4WithOrWithoutHyphens() {
+    @Test
+    @SuppressWarnings("unchecked")
+    void createsUuidV4WithOrWithoutHyphens() {
         List<String> ids = (List<String>) tools.uuids(100, true).get("uuids");
         assertEquals(100, new HashSet<>(ids).size());
         ids.forEach(id -> assertEquals(4, UUID.fromString(id).version()));
@@ -41,7 +50,8 @@ class ToolServiceTest {
         assertThrows(IllegalArgumentException.class, () -> tools.uuids(101, false));
     }
 
-    @Test void timestampsRoundTripWithTimezoneAndMilliseconds() {
+    @Test
+    void timestampsRoundTripWithTimezoneAndMilliseconds() {
         ToolRequests.Timestamp request = new ToolRequests.Timestamp();
         request.setDateTime("1970-01-01T08:00:00");
         request.setZoneId("Asia/Hong_Kong");
@@ -54,7 +64,8 @@ class ToolServiceTest {
         assertEquals(-1000L, tools.timestamp(request).get("timestamp"));
     }
 
-    @Test void invalidDatesAndDstAmbiguitiesAreRejected() {
+    @Test
+    void invalidDatesAndDstAmbiguitiesAreRejected() {
         ToolRequests.Timestamp request = new ToolRequests.Timestamp();
         request.setZoneId("America/New_York");
         request.setDateTime("2026-03-08T02:30:00");
@@ -66,7 +77,8 @@ class ToolServiceTest {
         assertThrows(java.time.DateTimeException.class, () -> tools.timestamp(request));
     }
 
-    @Test void countsUnicodeCodePointsWordsAndLines() {
+    @Test
+    void countsUnicodeCodePointsWordsAndLines() {
         ToolRequests.Text request = new ToolRequests.Text();
         request.setText("你好 World!\r\nHi 😀");
         Map<String, Object> stats = tools.text(request);
@@ -79,7 +91,8 @@ class ToolServiceTest {
         assertEquals(0, tools.text(request).get("lines"));
     }
 
-    @Test void base64Utf8RoundTripAndInvalidInput() {
+    @Test
+    void base64Utf8RoundTripAndInvalidInput() {
         ToolRequests.Base64 request = new ToolRequests.Base64();
         request.setText("你好 API");
         String encoded = (String) tools.base64(request).get("result");
@@ -92,7 +105,8 @@ class ToolServiceTest {
         assertThrows(IllegalArgumentException.class, () -> tools.base64(request));
     }
 
-    @Test void jsonPreservesNumbersAndSupportsFormatAndCompress() {
+    @Test
+    void jsonPreservesNumbersAndSupportsFormatAndCompress() {
         ToolRequests.Json request = new ToolRequests.Json();
         request.setMode("compress");
         request.setText("{ \"large\": 123456789012345678901234567890, \"fraction\": 0.1234567890123456789 }");
@@ -104,7 +118,8 @@ class ToolServiceTest {
         assertEquals("null", tools.json(request).get("result"));
     }
 
-    @Test void jsonRejectsDuplicatesTrailingValuesAndExcessiveNesting() {
+    @Test
+    void jsonRejectsDuplicatesTrailingValuesAndExcessiveNesting() {
         ToolRequests.Json request = new ToolRequests.Json();
         for (String invalid : Arrays.asList("{\"x\":1,\"x\":2}", "{} {}", "{", " ")) {
             request.setText(invalid);
@@ -115,7 +130,8 @@ class ToolServiceTest {
         assertThrows(IllegalArgumentException.class, () -> tools.json(request));
     }
 
-    @Test void digestMatchesKnownVectorsAndRejectsUnknownAlgorithms() {
+    @Test
+    void digestMatchesKnownVectorsAndRejectsUnknownAlgorithms() {
         ToolRequests.Digest request = new ToolRequests.Digest();
         request.setText("abc");
         assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
@@ -128,7 +144,9 @@ class ToolServiceTest {
         assertThrows(IllegalArgumentException.class, () -> tools.digest(request));
     }
 
-    @Test @SuppressWarnings("unchecked") void randomUniqueFillsSmallInclusiveRange() {
+    @Test
+    @SuppressWarnings("unchecked")
+    void randomUniqueFillsSmallInclusiveRange() {
         List<Integer> values = (List<Integer>) tools.random(-4, 4, 9, true).get("numbers");
         assertEquals(9, new HashSet<>(values).size());
         assertTrue(values.contains(-4));
@@ -138,13 +156,16 @@ class ToolServiceTest {
         assertEquals(Collections.singletonList(5), tools.random(5, 5, 1, false).get("numbers"));
     }
 
-    @Test @SuppressWarnings("unchecked") void randomSupportsFullAllowedIntegerRange() {
+    @Test
+    @SuppressWarnings("unchecked")
+    void randomSupportsFullAllowedIntegerRange() {
         List<Integer> values = (List<Integer>) tools.random(-1000000000, 1000000000, 1000, true).get("numbers");
         assertEquals(1000, new HashSet<>(values).size());
         assertTrue(values.stream().allMatch(value -> value >= -1000000000 && value <= 1000000000));
     }
 
-    @Test void dateCalculationsHandleLeapYearsAndNegativeDays() {
+    @Test
+    void dateCalculationsHandleLeapYearsAndNegativeDays() {
         ToolRequests.DateCalculation request = new ToolRequests.DateCalculation();
         request.setStartDate("2024-02-28");
         request.setEndDate("2024-03-01");
@@ -157,7 +178,8 @@ class ToolServiceTest {
         assertThrows(java.time.DateTimeException.class, () -> tools.date(request));
     }
 
-    @Test void unitsConvertLengthWeightAndTemperaturePrecisely() {
+    @Test
+    void unitsConvertLengthWeightAndTemperaturePrecisely() {
         ToolRequests.UnitConversion request = new ToolRequests.UnitConversion();
         request.setCategory("length"); request.setFrom("m"); request.setTo("cm"); request.setValue(BigDecimal.ONE);
         assertEquals(0, new BigDecimal("100").compareTo((BigDecimal) tools.units(request).get("result")));
@@ -169,7 +191,8 @@ class ToolServiceTest {
         assertEquals(0, BigDecimal.ZERO.compareTo((BigDecimal) tools.units(request).get("result")));
     }
 
-    @Test void unitsRejectCrossCategoryNegativePhysicalValuesAndExtremeScales() {
+    @Test
+    void unitsRejectCrossCategoryNegativePhysicalValuesAndExtremeScales() {
         ToolRequests.UnitConversion request = new ToolRequests.UnitConversion();
         request.setCategory("length"); request.setFrom("m"); request.setTo("kg"); request.setValue(BigDecimal.ONE);
         assertThrows(IllegalArgumentException.class, () -> tools.units(request));
@@ -181,7 +204,8 @@ class ToolServiceTest {
         assertThrows(IllegalArgumentException.class, () -> tools.units(request));
     }
 
-    @Test void httpStatusProvidesMeaningAndRejectsUnknownCodes() {
+    @Test
+    void httpStatusProvidesMeaningAndRejectsUnknownCodes() {
         assertEquals("NOT_FOUND", tools.httpStatus(404).get("name"));
         assertEquals("请求的资源不存在", tools.httpStatus(404).get("description"));
         assertEquals("成功响应", tools.httpStatus(200).get("category"));

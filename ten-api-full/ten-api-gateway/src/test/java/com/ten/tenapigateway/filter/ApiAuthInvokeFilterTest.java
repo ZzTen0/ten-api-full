@@ -28,6 +28,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * 网关开放接口鉴权及额度路由测试。
+ *
+ * <p>覆盖请求篡改、真实接口 ID、下线拦截、重放拒绝和下游错误隔离，RPC 与 Redis 使用 mock。</p>
+ */
 class ApiAuthInvokeFilterTest {
     private static final String SECRET = "client-secret";
     private static final String INTERNAL = "internal-secret-for-tests-0123456789";
@@ -89,7 +94,8 @@ class ApiAuthInvokeFilterTest {
         verifyNoInteractions(quota, values);
     }
 
-    @Test void authenticatesActualBodyAndForwardsItWithFreshIdentityProof() {
+    @Test
+    void authenticatesActualBodyAndForwardsItWithFreshIdentityProof() {
         MockServerWebExchange exchange = exchange(HttpMethod.POST, PATH, BODY, signature());
         AtomicReference<String> forwardedBody = new AtomicReference<>();
         filter.filter(exchange, next -> {
@@ -110,11 +116,13 @@ class ApiAuthInvokeFilterTest {
         verify(quota).invokeCount(42L, 1L);
     }
 
-    @Test void rejectsChangedBodyEvenWithAnUnchangedBodyHeader() {
+    @Test
+    void rejectsChangedBodyEvenWithAnUnchangedBodyHeader() {
         rejected(exchange(HttpMethod.POST, PATH, "{\"username\":\"attacker\"}", signature()));
     }
 
-    @Test void chargesTheResolvedInterfaceInsteadOfAFixedId() {
+    @Test
+    void chargesTheResolvedInterfaceInsteadOfAFixedId() {
         when(interfaces.resolveOnlineInterfaceId("POST", "/api/name/object")).thenReturn(77L);
         when(quota.invokeCount(42L, 77L)).thenReturn(true);
         MockServerWebExchange exchange = exchange(HttpMethod.POST, PATH, BODY, signature());
@@ -123,7 +131,8 @@ class ApiAuthInvokeFilterTest {
         verify(quota, never()).invokeCount(42L, 1L);
     }
 
-    @Test void offlineOrUnknownInterfacesAreNotCharged() {
+    @Test
+    void offlineOrUnknownInterfacesAreNotCharged() {
         when(interfaces.resolveOnlineInterfaceId(anyString(), anyString())).thenReturn(null);
         MockServerWebExchange exchange = exchange(HttpMethod.POST, PATH, BODY, signature());
         filter.filter(exchange, next -> fail("Offline interface was forwarded")).block();
@@ -131,19 +140,23 @@ class ApiAuthInvokeFilterTest {
         verifyNoInteractions(quota, values);
     }
 
-    @Test void rejectsChangedQuery() {
+    @Test
+    void rejectsChangedQuery() {
         rejected(exchange(HttpMethod.POST, "/api/name/object?lang=en", BODY, signature()));
     }
 
-    @Test void rejectsChangedMethod() {
+    @Test
+    void rejectsChangedMethod() {
         rejected(exchange(HttpMethod.PUT, PATH, BODY, signature()));
     }
 
-    @Test void rejectsChangedPath() {
+    @Test
+    void rejectsChangedPath() {
         rejected(exchange(HttpMethod.POST, "/api/name/path/other", BODY, signature()));
     }
 
-    @Test void rejectsLegacySignatures() {
+    @Test
+    void rejectsLegacySignatures() {
         MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.post(PATH)
                 .header("accessKey", "ak").header("timestamp", timestamp).header("nonce", NONCE)
                 .header("sign", signature()).body(BODY));
@@ -151,7 +164,8 @@ class ApiAuthInvokeFilterTest {
         verifyNoInteractions(users);
     }
 
-    @Test void rejectsReplayWithoutCharging() {
+    @Test
+    void rejectsReplayWithoutCharging() {
         when(values.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(Mono.just(false));
         MockServerWebExchange exchange = exchange(HttpMethod.POST, PATH, BODY, signature());
         filter.filter(exchange, next -> fail("Replay was forwarded")).block();
@@ -159,7 +173,8 @@ class ApiAuthInvokeFilterTest {
         verifyNoInteractions(quota);
     }
 
-    @Test void failsClosedWhenInternalSecretIsMissing() {
+    @Test
+    void failsClosedWhenInternalSecretIsMissing() {
         ReflectionTestUtils.setField(filter, "internalSecret", "");
         MockServerWebExchange exchange = exchange(HttpMethod.POST, PATH, BODY, signature());
         filter.filter(exchange, next -> fail("Request was forwarded")).block();
@@ -167,7 +182,8 @@ class ApiAuthInvokeFilterTest {
         verifyNoInteractions(users, quota, values);
     }
 
-    @Test void rejectsOversizedBodiesBeforeAuthentication() {
+    @Test
+    void rejectsOversizedBodiesBeforeAuthentication() {
         MockServerWebExchange exchange = exchange(HttpMethod.POST, PATH,
                 String.join("", Collections.nCopies(RequestSignature.MAX_BODY_BYTES + 1, "a")), signature());
         filter.filter(exchange, next -> fail("Oversized request was forwarded")).block();
@@ -175,7 +191,8 @@ class ApiAuthInvokeFilterTest {
         verifyNoInteractions(users, quota, values);
     }
 
-    @Test void stripsSpoofedIdentityOnSessionRoutes() {
+    @Test
+    void stripsSpoofedIdentityOnSessionRoutes() {
         MockServerWebExchange exchange = exchange(HttpMethod.POST, "/api/user/login", "{}", signature());
         filter.filter(exchange, next -> {
             assertNull(next.getRequest().getHeaders().getFirst("X-User-Id"));
@@ -185,21 +202,24 @@ class ApiAuthInvokeFilterTest {
         verifyNoInteractions(users, quota, values);
     }
 
-    @Test void whitelistCannotDisableOpenApiAuthentication() {
+    @Test
+    void whitelistCannotDisableOpenApiAuthentication() {
         GatewayInvokeProperties properties = new GatewayInvokeProperties();
         properties.setWhiteList(Collections.singletonList("/api/**"));
         ReflectionTestUtils.setField(filter, "properties", properties);
         rejected(exchange(HttpMethod.POST, PATH, "tampered", signature()));
     }
 
-    @Test void downstreamErrorsAreNotMisreportedAsAuthenticationFailures() {
+    @Test
+    void downstreamErrorsAreNotMisreportedAsAuthenticationFailures() {
         MockServerWebExchange exchange = exchange(HttpMethod.POST, PATH, BODY, signature());
         assertThrows(IllegalStateException.class, () -> filter.filter(exchange,
                 next -> Mono.error(new IllegalStateException("downstream failure"))).block());
         assertNotEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
     }
 
-    @Test void dependencyFailuresDoNotExposeExceptionDetails() {
+    @Test
+    void dependencyFailuresDoNotExposeExceptionDetails() {
         when(users.getInvokeUser("ak")).thenThrow(new RuntimeException("private-password-in-RPC-error"));
         MockServerWebExchange exchange = exchange(HttpMethod.POST, PATH, BODY, signature());
         filter.filter(exchange, next -> fail("Request was forwarded")).block();

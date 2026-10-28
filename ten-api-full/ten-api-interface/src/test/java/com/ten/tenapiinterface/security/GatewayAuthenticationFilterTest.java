@@ -19,6 +19,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * 接口服务内部鉴权过滤器测试。
+ *
+ * <p>覆盖真实请求体保留、身份及内容篡改、重放拒绝和依赖故障时拒绝放行。</p>
+ */
 class GatewayAuthenticationFilterTest {
     private static final String SECRET = "internal-secret-for-tests-0123456789";
     private static final String NONCE = "0123456789abcdef";
@@ -28,7 +33,8 @@ class GatewayAuthenticationFilterTest {
     private ValueOperations<String, String> values;
     private GatewayAuthenticationFilter filter;
 
-    @BeforeEach @SuppressWarnings("unchecked")
+    @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         redis = mock(StringRedisTemplate.class);
         values = mock(ValueOperations.class);
@@ -49,7 +55,8 @@ class GatewayAuthenticationFilterTest {
         return request;
     }
 
-    @Test void validProofPreservesBodyForController() throws Exception {
+    @Test
+    void validProofPreservesBodyForController() throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean forwarded = new AtomicBoolean();
         filter.doFilter(request("POST", "/api/name/object", BODY), response, (req, res) -> {
@@ -60,7 +67,8 @@ class GatewayAuthenticationFilterTest {
         verify(values).setIfAbsent(eq("interface:nonce:42:" + NONCE), eq(timestamp), eq(Duration.ofSeconds(601)));
     }
 
-    @Test void userIdHeaderAloneCannotBypassAuthentication() throws Exception {
+    @Test
+    void userIdHeaderAloneCannotBypassAuthentication() throws Exception {
         MockHttpServletRequest request = request("POST", "/api/name/object", BODY);
         request.removeHeader("X-Gateway-Signature");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -69,7 +77,8 @@ class GatewayAuthenticationFilterTest {
         verifyNoInteractions(values);
     }
 
-    @Test void rejectsTamperedBody() throws Exception {
+    @Test
+    void rejectsTamperedBody() throws Exception {
         MockHttpServletRequest request = request("POST", "/api/name/object", BODY);
         request.setContent("tampered".getBytes(StandardCharsets.UTF_8));
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -78,7 +87,8 @@ class GatewayAuthenticationFilterTest {
         verifyNoInteractions(values);
     }
 
-    @Test void rejectsTamperedIdentity() throws Exception {
+    @Test
+    void rejectsTamperedIdentity() throws Exception {
         MockHttpServletRequest request = request("POST", "/api/name/object", BODY);
         request.removeHeader("X-User-Id");
         request.addHeader("X-User-Id", "99");
@@ -87,14 +97,16 @@ class GatewayAuthenticationFilterTest {
         assertEquals(403, response.getStatus());
     }
 
-    @Test void rejectsReplay() throws Exception {
+    @Test
+    void rejectsReplay() throws Exception {
         when(values.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(false);
         MockHttpServletResponse response = new MockHttpServletResponse();
         filter.doFilter(request("POST", "/api/name/object", BODY), response, (req, res) -> fail("Replay accepted"));
         assertEquals(403, response.getStatus());
     }
 
-    @ParameterizedTest @ValueSource(strings = {"/api/name/ga", "/api/name/path/test"})
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/name/ga", "/api/name/path/test"})
     void protectsGetAndPathEndpointsAsWell(String path) throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
         request.setContextPath("/api");
@@ -103,7 +115,8 @@ class GatewayAuthenticationFilterTest {
         assertEquals(403, response.getStatus());
     }
 
-    @Test void healthCheckRemainsAvailableWithoutCredentials() throws Exception {
+    @Test
+    void healthCheckRemainsAvailableWithoutCredentials() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/actuator/health");
         request.setContextPath("/api");
         AtomicBoolean forwarded = new AtomicBoolean();
@@ -113,7 +126,8 @@ class GatewayAuthenticationFilterTest {
         verifyNoInteractions(values);
     }
 
-    @Test void redisFailureFailsClosedWithoutLeakingDetails() throws Exception {
+    @Test
+    void redisFailureFailsClosedWithoutLeakingDetails() throws Exception {
         when(values.setIfAbsent(anyString(), anyString(), any(Duration.class)))
                 .thenThrow(new RuntimeException("redis-password"));
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -122,7 +136,8 @@ class GatewayAuthenticationFilterTest {
         assertFalse(response.getContentAsString().contains("redis-password"));
     }
 
-    @Test void missingInternalSecretFailsClosed() throws Exception {
+    @Test
+    void missingInternalSecretFailsClosed() throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
         new GatewayAuthenticationFilter(redis, "").doFilter(request("POST", "/api/name/object", BODY), response,
                 (req, res) -> fail("Missing secret ignored"));

@@ -9,16 +9,23 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * 公共 v2 签名协议测试。
+ *
+ * <p>通过独立 HMAC 测试向量、签名字段篡改及时间窗口边界验证协议约束。</p>
+ */
 class RequestSignatureTest {
     private static final byte[] BODY = "{\"username\":\"ten\"}".getBytes(StandardCharsets.UTF_8);
 
-    @Test void matchesIndependentHmacVector() {
+    @Test
+    void matchesIndependentHmacVector() {
         assertEquals("00d3d0b5e05713cbc1c95bec56a3c6f71b9d126b791bed15dadf3e0735a8d1f6",
                 RequestSignature.sign("POST", "/api/name/object?lang=zh", "ak", "1700000000",
                         "0123456789abcdef", BODY, "test-secret"));
     }
 
-    @ParameterizedTest @ValueSource(strings = {"method", "path", "query", "identity", "timestamp", "nonce", "body"})
+    @ParameterizedTest
+    @ValueSource(strings = {"method", "path", "query", "identity", "timestamp", "nonce", "body"})
     void everyRequestFieldIsAuthenticated(String changed) {
         String original = RequestSignature.sign("POST", "/api/name/object?x=1", "ak", "1700000000",
                 "0123456789abcdef", BODY, "secret");
@@ -30,12 +37,14 @@ class RequestSignatureTest {
         assertFalse(RequestSignature.matches(original, modified));
     }
 
-    @Test void preservesEncodedPathAndQueryOrder() {
+    @Test
+    void preservesEncodedPathAndQueryOrder() {
         assertEquals("/api/name/path/a%20b?x=%2F&b=2",
                 RequestSignature.target(URI.create("http://localhost/api/name/path/a%20b?x=%2F&b=2")));
     }
 
-    @Test void rejectsExpiredFutureAndOverflowTimestamps() {
+    @Test
+    void rejectsExpiredFutureAndOverflowTimestamps() {
         long now = 1700000000;
         assertTrue(RequestSignature.validTimestamp("1700000300", now));
         assertTrue(RequestSignature.validTimestamp("1699999700", now));
@@ -47,7 +56,8 @@ class RequestSignatureTest {
         assertTrue(RequestSignature.NONCE_TTL_SECONDS > 2 * RequestSignature.CLOCK_SKEW_SECONDS);
     }
 
-    @Test void rejectsMalformedSignaturesAndFields() {
+    @Test
+    void rejectsMalformedSignaturesAndFields() {
         assertFalse(RequestSignature.matches("00", null));
         assertFalse(RequestSignature.matches("00", "not-hex"));
         assertFalse(RequestSignature.validNonce("short"));

@@ -17,3 +17,10 @@ This requirement applies to `ten-api-full/` and its workspace-level supporting f
 - A push to multiple URLs is not atomic. Check the result for both repositories; if one fails, report the partial result and retry only the failed destination after resolving the cause.
 - Do not force-push or overwrite remote history without explicit user authorization. If remote commits prevent a normal push, inspect the divergence and preserve both sides' work.
 - Report actual push outcomes. Configuring a remote or completing a dry run does not mean changes were published.
+
+## Code comments and formatting
+
+- Follow the existing Java code style when adding or editing TEN API code. Use Chinese Javadoc for new classes and methods, explaining responsibilities, parameters, return values, and relevant failure conditions.
+- Document request/response fields with their meaning, defaults, limits, units, and conditional requirements. Do not leave empty `@param` or `@return` descriptions.
+- Explain important authentication, quota, encoding, and algorithm decisions with concise Chinese comments. Keep annotations and declarations on separate lines and separate methods with blank lines.
+- Give new test classes and frontend helpers clear descriptions of their purpose. Update comments when behavior changes; do not invent authors or creation dates.
